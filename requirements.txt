@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
-llama-cpp-python==0.2.32
-pydantic
-httpx
-python-dotenv
 huggingface-hub
+pydantic
+runpod
+# llama-cpp-python  <-- DELETE THIS LINE

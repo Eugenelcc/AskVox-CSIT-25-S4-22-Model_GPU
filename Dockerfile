@@ -1,17 +1,15 @@
-# 1. Use DEVEL image (Crucial for compiling GPU support)
+# 1. Use DEVEL image (Required for runtime libraries)
 FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 2. Install Python & Build Tools
+# 2. Install Python & Basic Tools
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
     wget \
     git \
-    build-essential \
-    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,21 +17,20 @@ WORKDIR /app
 # 3. Download Model
 RUN wget -O model.gguf "https://huggingface.co/cakebut/askvox_api/resolve/main/llama-2-7b-chat.Q4_K_M.gguf?download=true"
 
-# 4. Install Python Deps
-# Copy requirements first to cache layers
+# 4. Install General Python Deps
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Upgrading pip is often required for modern wheels
+RUN pip3 install --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
 
-# 5. Install Llama-cpp with CUDA (GPU) flags
-# We do this separately to ensure the 'CMAKE_ARGS' are applied
-RUN CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip3 install llama-cpp-python
+# 5. Install Llama-cpp-python via PRE-BUILT WHEEL (The Fix)
+# We use the 'cu121' wheel which works on CUDA 12.x
+RUN pip3 install llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
 # 6. Copy App
 COPY app.py .
 
-# 7. EXPOSE PORT (Important for LB documentation, though RunPod ignores it sometimes)
+# 7. Expose & Start
 EXPOSE 8080
-
-# 8. START COMMAND (Web Server Mode)
-# We listen on 0.0.0.0 so the Load Balancer can reach us
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
