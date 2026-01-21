@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Literal
 from llama_cpp import Llama
 import os
@@ -49,6 +49,8 @@ class HistoryItem(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: List[HistoryItem] = []
+
+    model_config = ConfigDict(extra="allow")
 
 class ChatResponse(BaseModel):
     response: str
