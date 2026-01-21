@@ -1,38 +1,38 @@
-# Use a CUDA-enabled base image for GPU support
-FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu20.04
+# Use the official Python slim image as the base image
+FROM python:3.11-slim
 
-# Install necessary dependencies
+# Set DEBIAN_FRONTEND to noninteractive to avoid timezone prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install necessary packages and dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     wget \
     git \
-    python3-dev \
-    python3-pip \
-    libomp-dev \
+    tzdata \
  && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Reset DEBIAN_FRONTEND to interactive (optional, but good practice)
+ENV DEBIAN_FRONTEND=interactive
+
+# Set the working directory
 WORKDIR /app
 
-# Copy requirements file
+# Download the model
+RUN wget -O model.gguf "https://huggingface.co/cakebut/askvox_api/resolve/main/llama-2-7b-chat.Q4_K_M.gguf?download=true"
+
+# Copy the requirements file into the container
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip3 install --upgrade pip
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_NATIVE=ON" pip install --no-cache-dir -r requirements.txt
 
-# Download the model (assuming the model is stored on Hugging Face)
-RUN wget -O model.gguf "https://huggingface.co/cakebut/askvox_api/resolve/main/llama-2-7b-chat.Q4_K_M.gguf?download=true"
-
-# Copy your custom app.py logic into the container
+# Copy the FastAPI application code
 COPY app.py .
 
-# Set environment variable to use GPU (ensure this matches your setup on Runpod)
-ENV CUDA_VISIBLE_DEVICES=0
-
-# Expose port
+# Set the environment variable for the port
 ENV PORT=8080
 
-# Command to run the app with FastAPI and Uvicorn
+# Run the FastAPI app with Uvicorn
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
