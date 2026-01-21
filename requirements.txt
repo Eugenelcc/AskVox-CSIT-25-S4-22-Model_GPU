@@ -1,6 +1,4 @@
 fastapi
-uvicorn[standard]
 huggingface-hub
 pydantic
 runpod
-# llama-cpp-python  <-- DELETE THIS LINE
