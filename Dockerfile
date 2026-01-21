@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -22,8 +22,8 @@ RUN wget -O model.gguf \
 COPY requirements.txt .
 
 RUN python3.11 -m pip install --upgrade pip && \
-    CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_CUDA=ON -DLLAMA_NATIVE=ON" \
     python3.11 -m pip install --no-cache-dir -r requirements.txt
+
 
 COPY app.py .
 
