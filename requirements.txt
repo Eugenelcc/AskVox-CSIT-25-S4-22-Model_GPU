@@ -1,5 +1,5 @@
 fastapi
 uvicorn[standard]
-vllm
+llama-cpp-python
 huggingface-hub
 pydantic
