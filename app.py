@@ -22,7 +22,7 @@ def load_model():
     global llm
     if not os.path.exists(MODEL_PATH):
         raise RuntimeError(f"CRITICAL ERROR: Model not found at {MODEL_PATH}. Did the Dockerfile 'wget' command fail?")
-    
+
     try:
         print(f"Loading model from {MODEL_PATH}...")
         llm = Llama(
@@ -36,8 +36,10 @@ def load_model():
     except Exception as e:
         raise RuntimeError(f"Failed to load Llama model: {e}")
 
-# Call the function to load the model during startup
-load_model()
+# Load model during FastAPI startup
+@app.on_event("startup")
+async def startup_event():
+    load_model()
 
 # ---------- CHAT SCHEMA ----------
 class HistoryItem(BaseModel):
@@ -55,7 +57,9 @@ class ChatResponse(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "online", "system": "Cloud Run GPU"}
+    # Debug print indicating server is running
+    print("App.py RunPod server is online")
+    return {"status": "online", "system": "RunPod GPU"}
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
@@ -73,7 +77,7 @@ def chat(req: ChatRequest):
 
     prompt = "\n".join(parts)
 
-    print("🧠 CloudRun LLaMA: generating...")
+    print("🧠 RunPod LLaMA: generating...")
     t0 = time.perf_counter()
     try:
         output = llm(
@@ -84,7 +88,7 @@ def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}")
     t1 = time.perf_counter()
-    print(f"⏱️ CloudRun generation time: {t1 - t0:.2f}s")
+    print(f"⏱️ RunPod generation time: {t1 - t0:.2f}s")
 
     try:
         text = output["choices"][0]["text"]
