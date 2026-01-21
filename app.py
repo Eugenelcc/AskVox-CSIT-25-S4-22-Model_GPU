@@ -14,24 +14,30 @@ N_THREADS = int(os.getenv("N_THREADS", "4"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "512"))
 GPU_LAYER_COUNT = int(os.getenv("GPU_LAYER_COUNT", "30"))  # Set number of layers to load on GPU
 
-print("--- Initializing Cloud AI ---")
+# Initialize the model (this will happen during startup)
+llm = None
 
-if not os.path.exists(MODEL_PATH):
-    raise RuntimeError(f"CRITICAL ERROR: Model not found at {MODEL_PATH}. Did the Dockerfile 'wget' command fail?")
+# Define a function to load the model
+def load_model():
+    global llm
+    if not os.path.exists(MODEL_PATH):
+        raise RuntimeError(f"CRITICAL ERROR: Model not found at {MODEL_PATH}. Did the Dockerfile 'wget' command fail?")
+    
+    try:
+        print(f"Loading model from {MODEL_PATH}...")
+        llm = Llama(
+            model_path=MODEL_PATH,
+            n_ctx=N_CTX,
+            n_threads=N_THREADS,
+            n_gpu_layers=GPU_LAYER_COUNT,  # Ensure GPU is being utilized with specific layers
+            verbose=False,
+        )
+        print("✅ Model loaded successfully.")
+    except Exception as e:
+        raise RuntimeError(f"Failed to load Llama model: {e}")
 
-# --- LOAD MODEL ---
-try:
-    print(f"Loading model from {MODEL_PATH}...")
-    llm = Llama(
-        model_path=MODEL_PATH,
-        n_ctx=N_CTX,
-        n_threads=N_THREADS,
-        n_gpu_layers=GPU_LAYER_COUNT,  # Ensure GPU is being utilized with specific layers
-        verbose=False,
-    )
-    print("✅ Model loaded successfully.")
-except Exception as e:
-    raise RuntimeError(f"Failed to load Llama model: {e}")
+# Call the function to load the model during startup
+load_model()
 
 # ---------- CHAT SCHEMA ----------
 class HistoryItem(BaseModel):
@@ -44,6 +50,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
 # -------------------------------
 
 @app.get("/")
