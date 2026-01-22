@@ -36,4 +36,4 @@ COPY app.py .
 
 # No need to EXPOSE port — RunPod handles networking
 # Listen on $PORT (set by RunPod at runtime)
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
