@@ -1,4 +1,3 @@
 fastapi
-huggingface-hub
+uvicorn[standard]
 pydantic
-runpod

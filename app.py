@@ -5,43 +5,40 @@ from llama_cpp import Llama
 import os
 import time
 
+# Initialize FastAPI app
 app = FastAPI(title="AskVox LLaMA2 CloudRun")
 
 # --- CONFIGURATION ---
-MODEL_PATH = "./model.gguf"  # Ensure the correct model path is set
+MODEL_PATH = "./model.gguf"
 N_CTX = int(os.getenv("N_CTX", "2048"))
 N_THREADS = int(os.getenv("N_THREADS", "4"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "512"))
-GPU_LAYER_COUNT = int(os.getenv("GPU_LAYER_COUNT", "30"))  # Set number of layers to load on GPU
+GPU_LAYER_COUNT = int(os.getenv("GPU_LAYER_COUNT", "30"))
 
-# Initialize the model (this will happen during startup)
+# Global model instance
 llm = None
 
-# Define a function to load the model
 def load_model():
     global llm
     if not os.path.exists(MODEL_PATH):
-        raise RuntimeError(f"CRITICAL ERROR: Model not found at {MODEL_PATH}. Did the Dockerfile 'wget' command fail?")
+        raise RuntimeError(f"CRITICAL ERROR: Model not found at {MODEL_PATH}")
 
-    try:
-        print(f"Loading model from {MODEL_PATH}...")
-        llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=N_CTX,
-            n_threads=N_THREADS,
-            n_gpu_layers=GPU_LAYER_COUNT,  # Ensure GPU is being utilized with specific layers
-            verbose=False,
-        )
-        print("✅ Model loaded successfully.")
-    except Exception as e:
-        raise RuntimeError(f"Failed to load Llama model: {e}")
+    print(f"Loading model from {MODEL_PATH}...")
+    llm = Llama(
+        model_path=MODEL_PATH,
+        n_ctx=N_CTX,
+        n_threads=N_THREADS,
+        n_gpu_layers=GPU_LAYER_COUNT,
+        verbose=False,
+    )
+    print("✅ Model loaded successfully.")
 
-# Load model during FastAPI startup
+# Load model at startup
 @app.on_event("startup")
 async def startup_event():
     load_model()
 
-# ---------- CHAT SCHEMA ----------
+# ---------- SCHEMAS ----------
 class HistoryItem(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -55,14 +52,20 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
-# -------------------------------
+# ---------- ENDPOINTS ----------
 
+# 🔴 REQUIRED for RunPod Load Balancer: /ping
+@app.get("/ping")
+def ping():
+    """Health check endpoint required by RunPod Load Balancer."""
+    return {"status": "ok", "message": "Model is ready"}
+
+# Optional: keep /health for your own debugging
 @app.get("/health")
-def root():
-    # Debug print indicating server is running
-    print("App.py RunPod server is online")
+def health():
     return {"status": "online", "system": "RunPod GPU"}
 
+# Main inference endpoint
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     SYSTEM_PROMPT = "You are AskVox, a safe educational AI tutor."
@@ -86,6 +89,7 @@ def chat(req: ChatRequest):
             prompt,
             max_tokens=MAX_TOKENS,
             temperature=0.7,
+            echo=False,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}")
