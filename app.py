@@ -10,26 +10,25 @@ llm = Llama(
 )
 
 def handler(job):
-    if "input" not in job or "prompt" not in job["input"]:
-        return {"error": "Missing input.prompt"}
+    input_data = job.get("input", {})
+    prompt = input_data.get("prompt", "")
+    history = input_data.get("history", [])
 
-    user_prompt = job["input"]["prompt"]
+    parts = [f"[SYSTEM]\n{SYSTEM_PROMPT.strip()}"]
 
-    full_prompt = (
-        "[SYSTEM] You are AskVox, a safe educational AI tutor.\n"
-        f"[USER] {user_prompt}\n"
-        "[ASSISTANT]"
-    )
+    for h in history[-4:]:
+        role = h.get("role")
+        content = h.get("content", "")
+        if role == "user":
+            parts.append(f"[USER] {content}")
+        elif role == "assistant":
+            parts.append(f"[ASSISTANT] {content}")
 
-    output = llm(
-        full_prompt,
-        max_tokens=512,
-        temperature=0.7,
-    )
+    parts.append(f"[USER] {prompt}")
+    parts.append("[ASSISTANT]")
 
-    return {
-        "response": output["choices"][0]["text"].strip()
-    }
+    full_prompt = "\n".join(parts)
+
 
 
 runpod.serverless.start({"handler": handler})
