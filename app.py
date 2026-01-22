@@ -57,7 +57,7 @@ class ChatResponse(BaseModel):
 
 # -------------------------------
 
-@app.get("/")
+@app.get("/health")
 def root():
     # Debug print indicating server is running
     print("App.py RunPod server is online")
