@@ -23,7 +23,7 @@ def handler(job):
 
     output = llm(
         full_prompt,
-        max_tokens=512,
+        max_tokens=1200,
         temperature=0.7,
     )
 
