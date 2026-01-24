@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Download model
-RUN wget -O model.gguf "https://huggingface.co/cakebut/Llama-3.3-8B-Instruct/resolve/main/Llama-3.3-8B-Instruct.Q6_K.gguf"
+RUN wget -O model.gguf "https://huggingface.co/cakebut/askvox_api/resolve/main/llama-2-7b-chat.Q4_K_M.gguf"
 
 # Install deps
 RUN pip3 install --upgrade pip
