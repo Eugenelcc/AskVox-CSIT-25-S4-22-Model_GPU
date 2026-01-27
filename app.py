@@ -1,6 +1,5 @@
 import runpod
 from llama_cpp import Llama
-import time
 
 llm = Llama(
     model_path="./model.gguf",
@@ -10,23 +9,22 @@ llm = Llama(
 )
 
 def handler(job):
-    if "input" not in job or "prompt" not in job["input"]:
+    inp = job.get("input", {})
+    prompt = inp.get("prompt")
+    if not prompt:
         return {"error": "Missing input.prompt"}
 
-    prompt = job["input"]["prompt"]
+    stop = inp.get("stop") or ["[ASSISTANT]", "[USER]", "[SYSTEM]"]
 
     output = llm(
-        full_prompt,
+        prompt,                    # ✅ use the actual prompt
         max_tokens=1200,
         temperature=0.7,
-        stop=["[ASSISTANT]", "[USER]", "[SYSTEM]"]
+        stop=stop,                 # ✅ STOP TOKENS (this fixes looping)
     )
-
 
     return {
         "response": output["choices"][0]["text"].strip()
     }
-
-
 
 runpod.serverless.start({"handler": handler})
