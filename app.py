@@ -16,10 +16,12 @@ def handler(job):
     prompt = job["input"]["prompt"]
 
     output = llm(
-        prompt,
+        full_prompt,
         max_tokens=1200,
         temperature=0.7,
+        stop=["[ASSISTANT]", "[USER]", "[SYSTEM]"]
     )
+
 
     return {
         "response": output["choices"][0]["text"].strip()
