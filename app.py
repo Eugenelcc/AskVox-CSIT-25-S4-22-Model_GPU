@@ -3,24 +3,37 @@ from llama_cpp import Llama
 
 llm = Llama(
     model_path="./model.gguf",
-    n_ctx=2048,
+    n_ctx=4096,                 # LLaMA-3 likes larger ctx
     n_gpu_layers=30,
     verbose=False,
 )
 
+SYSTEM_PROMPT = (
+    "You are AskVox, a friendly and helpful AI assistant. "
+    "Answer clearly and conversationally."
+)
+
 def handler(job):
     inp = job.get("input", {})
-    prompt = inp.get("prompt")
-    if not prompt:
+    user_prompt = inp.get("prompt")
+    if not user_prompt:
         return {"error": "Missing input.prompt"}
 
-    stop = inp.get("stop") or ["[ASSISTANT]", "[USER]", "[SYSTEM]"]
+    # 🔑 Build LLaMA-3 chat template
+    prompt = (
+        "<|begin_of_text|>"
+        "<|start_header_id|>system<|end_header_id|>\n"
+        f"{SYSTEM_PROMPT}<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n"
+        f"{user_prompt}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n"
+    )
 
     output = llm(
-        prompt,                    # ✅ use the actual prompt
+        prompt,
         max_tokens=1200,
         temperature=0.7,
-        stop=stop,                 # ✅ STOP TOKENS (this fixes looping)
+        stop=["<|eot_id|>"],   # ✅ ONLY correct stop token
     )
 
     return {
