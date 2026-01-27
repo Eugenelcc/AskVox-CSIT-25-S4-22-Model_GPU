@@ -13,16 +13,10 @@ def handler(job):
     if "input" not in job or "prompt" not in job["input"]:
         return {"error": "Missing input.prompt"}
 
-    user_prompt = job["input"]["prompt"]
-
-    full_prompt = (
-        "[SYSTEM] You are AskVox, a safe educational AI tutor.\n"
-        f"[USER] {user_prompt}\n"
-        "[ASSISTANT]"
-    )
+    prompt = job["input"]["prompt"]
 
     output = llm(
-        full_prompt,
+        prompt,
         max_tokens=1200,
         temperature=0.7,
     )
@@ -30,6 +24,7 @@ def handler(job):
     return {
         "response": output["choices"][0]["text"].strip()
     }
+
 
 
 runpod.serverless.start({"handler": handler})
