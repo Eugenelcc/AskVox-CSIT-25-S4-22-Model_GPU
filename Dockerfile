@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Download model
-RUN wget -O model.gguf "https://huggingface.co/cakebut/Llama-3.3-8B-Instruct-Q5/resolve/main/Llama-3.3-8B-Instruct.Q5_K_M.gguf"
+RUN wget -O model.gguf "https://huggingface.co/bartowski/allura-forge_Llama-3.3-8B-Instruct-GGUF/resolve/main/allura-forge_Llama-3.3-8B-Instruct-Q6_K_L.gguf"
 
 # Install deps
 RUN pip3 install --upgrade pip
