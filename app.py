@@ -3,8 +3,9 @@ from llama_cpp import Llama
 
 llm = Llama(
     model_path="./model.gguf",
-    n_ctx=4096,                 # LLaMA-3 likes larger ctx
-    n_gpu_layers=30,
+    n_ctx=4096,
+    n_gpu_layers=20,
+    n_threads=8,
     verbose=False,
 )
 
@@ -19,7 +20,6 @@ def handler(job):
     if not user_prompt:
         return {"error": "Missing input.prompt"}
 
-    # 🔑 Build LLaMA-3 chat template
     prompt = (
         "<|begin_of_text|>"
         "<|start_header_id|>system<|end_header_id|>\n"
@@ -33,7 +33,7 @@ def handler(job):
         prompt,
         max_tokens=1200,
         temperature=0.7,
-        stop=["<|eot_id|>"],   # ✅ ONLY correct stop token
+        stop=["<|eot_id|>"],
     )
 
     return {
