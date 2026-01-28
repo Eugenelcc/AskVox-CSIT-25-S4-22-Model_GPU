@@ -1,13 +1,20 @@
 import runpod
 from llama_cpp import Llama
 
-# Load model once at cold start
+# Load model once (cold start)
 llm = Llama(
-    model_path="./model.gguf",   # Llama-3.2-3B base GGUF
+    model_path="./Llama-3.2-3B.Q6_K.gguf",
     n_ctx=4096,
-    n_gpu_layers=20,             # adjust for VRAM
+    n_gpu_layers=20,     
     n_threads=8,
     verbose=False,
+)
+
+# Strong steering prompt for BASE models
+SYSTEM_PREFIX = (
+    "You are AskVox, a knowledgeable, clear, and helpful AI assistant. "
+    "You answer questions accurately, step by step when needed, "
+    "and keep explanations concise and friendly.\n\n"
 )
 
 def handler(job):
@@ -17,18 +24,18 @@ def handler(job):
     if not user_prompt:
         return {"error": "Missing input.prompt"}
 
-    # BASE model → plain text prompt
     prompt = (
-        "You are AskVox, a helpful AI assistant.\n\n"
+        SYSTEM_PREFIX +
         f"User: {user_prompt}\n"
         "Assistant:"
     )
 
     output = llm(
         prompt,
-        max_tokens=1200,
-        temperature=0.6,
+        max_tokens=1024,
+        temperature=0.7,
         top_p=0.9,
+        repeat_penalty=1.1,
         stop=["User:", "Assistant:"],
     )
 
