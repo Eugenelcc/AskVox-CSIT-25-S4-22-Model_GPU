@@ -15,18 +15,19 @@ def handler(job):
     user_prompt = job["input"]["prompt"]
 
     full_prompt = (
-        "Instruction: You are AskVox, a safe educational AI tutor.\n"
-        f"Question: {user_prompt}\n"
-        "Answer:"
+        "Instruction: You are AskVox, a friendly educational AI tutor.\n"
+        "Explain the topic clearly and in detail. "
+        "Use headings, bullet points, and examples where helpful.\n\n"
+        f"Question: {user_prompt}\n\n"
+        "Answer:\n"
     )
 
     output = llm(
         full_prompt,
-        max_tokens=400,
-        temperature=0.3,
+        max_tokens=1200,
+        temperature=0.45,
         top_p=0.9,
-        repeat_penalty=1.2,
-        stop=["\n\n"],
+        repeat_penalty=1.1,
     )
 
     return {
