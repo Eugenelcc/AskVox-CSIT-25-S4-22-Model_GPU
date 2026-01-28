@@ -21,7 +21,7 @@ def handler(job):
         temperature=0.45,
         top_p=0.9,
         repeat_penalty=1.1,
-        stop=["\nUser:", "\nAssistant:"],
+        stop=["<|eot_id|>"],
     )
 
     return {
