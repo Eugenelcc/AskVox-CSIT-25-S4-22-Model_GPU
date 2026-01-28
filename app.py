@@ -3,8 +3,8 @@ from llama_cpp import Llama
 
 llm = Llama(
     model_path="./model.gguf",
-    n_ctx=1536,
-    n_gpu_layers=20,   # or -1
+    n_ctx=2048,
+    n_gpu_layers=30,
     verbose=False,
 )
 
@@ -14,20 +14,19 @@ def handler(job):
 
     user_prompt = job["input"]["prompt"]
 
-    prompt = (
+    full_prompt = (
         "Instruction: You are AskVox, a safe educational AI tutor.\n"
-        "Explain the following topic clearly and in detail. "
-        "Use paragraphs and examples where helpful.\n\n"
-        f"Topic: {user_prompt}\n\n"
-        "Explanation:"
+        f"Question: {user_prompt}\n"
+        "Answer:"
     )
 
     output = llm(
-        prompt,
-        max_tokens=800,
-        temperature=0.5,
+        full_prompt,
+        max_tokens=400,
+        temperature=0.3,
         top_p=0.9,
-        repeat_penalty=1.15,
+        repeat_penalty=1.2,
+        stop=["\n\n"],
     )
 
     return {
