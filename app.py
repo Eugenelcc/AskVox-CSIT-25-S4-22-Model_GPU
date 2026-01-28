@@ -9,25 +9,26 @@ llm = Llama(
 )
 
 def handler(job):
-    inp = job.get("input", {})
-    prompt = inp.get("prompt")
-
+    prompt = job.get("input", {}).get("prompt")
     if not prompt:
         return {"error": "Missing input.prompt"}
 
+    full_prompt = (
+        "You are AskVox, a friendly, knowledgeable AI assistant. "
+        "Respond clearly and helpfully.\n\n"
+        f"{prompt}\n"
+    )
+
     output = llm(
-        prompt,
+        full_prompt,
         max_tokens=800,
         temperature=0.45,
         top_p=0.9,
-        repeat_penalty=1.1,
-        stop=["<|eot_id|>"],
+        repeat_penalty=1.15,
     )
 
     return {
         "response": output["choices"][0]["text"].strip()
     }
-
-
 
 runpod.serverless.start({"handler": handler})
