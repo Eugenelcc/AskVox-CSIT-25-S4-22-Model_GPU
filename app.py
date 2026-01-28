@@ -1,6 +1,5 @@
 import runpod
 from llama_cpp import Llama
-from typing import List, Dict
 
 # -----------------------
 # LOAD MODEL (ONCE)
@@ -8,7 +7,7 @@ from typing import List, Dict
 llm = Llama(
     model_path="./Llama-3.2-3B.Q6_K.gguf",
     n_ctx=2048,
-    n_gpu_layers=30,     # adjust to your GPU
+    n_gpu_layers=0,      # 🔴 MUST be 0 unless CUDA is confirmed
     n_threads=8,
     verbose=False,
 )
@@ -16,14 +15,7 @@ llm = Llama(
 # -----------------------
 # PROMPT BUILDER
 # -----------------------
-def build_prompt(message: str, history: List[Dict]) -> str:
-    """
-    Plain-text chat format.
-    No instruct tokens.
-    No JSON.
-    No forced style.
-    """
-
+def build_prompt(message, history):
     system = (
         "You are AskVox, a friendly and knowledgeable AI assistant. "
         "Respond naturally and clearly, with as much detail as the question requires.\n\n"
@@ -34,7 +26,7 @@ def build_prompt(message: str, history: List[Dict]) -> str:
     # keep last 6 turns max
     for h in history[-6:]:
         role = h.get("role")
-        content = h.get("content", "").strip()
+        content = (h.get("content") or "").strip()
         if not content:
             continue
 
@@ -67,17 +59,12 @@ def handler(job):
         temperature=0.6,
         top_p=0.9,
         repeat_penalty=1.15,
-        stop=["\nUser:"],   
+        stop=["\nUser:"],
     )
 
-    text = output["choices"][0]["text"].strip()
-
     return {
-        "response": text
+        "response": output["choices"][0]["text"].strip()
     }
 
 
-# -----------------------
-# START SERVERLESS
-# -----------------------
 runpod.serverless.start({"handler": handler})
