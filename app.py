@@ -1,48 +1,83 @@
 import runpod
 from llama_cpp import Llama
+from typing import List, Dict
 
-# Load model once (cold start)
+# -----------------------
+# LOAD MODEL (ONCE)
+# -----------------------
 llm = Llama(
     model_path="./Llama-3.2-3B.Q6_K.gguf",
-    n_ctx=4096,
-    n_gpu_layers=20,     
+    n_ctx=2048,
+    n_gpu_layers=30,     # adjust to your GPU
     n_threads=8,
     verbose=False,
 )
 
-# Strong steering prompt for BASE models
-SYSTEM_PREFIX = (
-    "You are AskVox, a knowledgeable, clear, and helpful AI assistant. "
-    "You answer questions accurately, step by step when needed, "
-    "and keep explanations concise and friendly.\n\n"
-)
+# -----------------------
+# PROMPT BUILDER
+# -----------------------
+def build_prompt(message: str, history: List[Dict]) -> str:
+    """
+    Plain-text chat format.
+    No instruct tokens.
+    No JSON.
+    No forced style.
+    """
 
+    system = (
+        "You are AskVox, a friendly and knowledgeable AI assistant. "
+        "Respond naturally and clearly, with as much detail as the question requires.\n\n"
+    )
+
+    prompt = system
+
+    # keep last 6 turns max
+    for h in history[-6:]:
+        role = h.get("role")
+        content = h.get("content", "").strip()
+        if not content:
+            continue
+
+        if role == "user":
+            prompt += f"User: {content}\n"
+        elif role == "assistant":
+            prompt += f"Assistant: {content}\n"
+
+    prompt += f"User: {message}\nAssistant:"
+
+    return prompt
+
+
+# -----------------------
+# RUNPOD HANDLER
+# -----------------------
 def handler(job):
     inp = job.get("input", {})
-    user_prompt = inp.get("prompt")
+    message = inp.get("message") or inp.get("prompt")
+    history = inp.get("history", [])
 
-    if not user_prompt:
-        return {"error": "Missing input.prompt"}
+    if not message:
+        return {"error": "Missing input.message"}
 
-    prompt = (
-        SYSTEM_PREFIX +
-        f"User: {user_prompt}\n"
-        "Assistant:"
-    )
+    prompt = build_prompt(message, history)
 
     output = llm(
         prompt,
-        max_tokens=1024,
-        temperature=0.7,
+        max_tokens=1200,
+        temperature=0.6,
         top_p=0.9,
-        repeat_penalty=1.1,
-        stop=["User:", "Assistant:"],
+        repeat_penalty=1.15,
+        stop=["\nUser:"],   
     )
 
+    text = output["choices"][0]["text"].strip()
+
     return {
-        "response": output["choices"][0]["text"].strip()
+        "response": text
     }
 
-runpod.serverless.start({
-    "handler": handler
-})
+
+# -----------------------
+# START SERVERLESS
+# -----------------------
+runpod.serverless.start({"handler": handler})
