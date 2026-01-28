@@ -7,7 +7,7 @@ from llama_cpp import Llama
 llm = Llama(
     model_path="./Llama-3.2-3B.Q6_K.gguf",
     n_ctx=2048,
-    n_gpu_layers=0,      # 🔴 MUST be 0 unless CUDA is confirmed
+    n_gpu_layers=20,     
     n_threads=8,
     verbose=False,
 )
