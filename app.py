@@ -3,8 +3,8 @@ from llama_cpp import Llama
 
 llm = Llama(
     model_path="./model.gguf",
-    n_ctx=2048,
-    n_gpu_layers=30,
+    n_ctx=1536,
+    n_gpu_layers=20,   # or -1
     verbose=False,
 )
 
@@ -24,11 +24,10 @@ def handler(job):
 
     output = llm(
         prompt,
-        max_tokens=800,          # allow depth
-        temperature=0.5,         # more expressive
+        max_tokens=800,
+        temperature=0.5,
         top_p=0.9,
-        repeat_penalty=1.15,     # avoid looping
-        stop=["\n\n\n"],         # stop after natural end
+        repeat_penalty=1.15,
     )
 
     return {
