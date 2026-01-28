@@ -1,34 +1,41 @@
 import runpod
 from llama_cpp import Llama
 
+# Load model once at cold start
 llm = Llama(
-    model_path="./model.gguf",
-    n_ctx=2048,
-    n_gpu_layers=30,
+    model_path="./model.gguf",   # Llama-3.2-3B base GGUF
+    n_ctx=4096,
+    n_gpu_layers=20,             # adjust for VRAM
+    n_threads=8,
     verbose=False,
 )
 
 def handler(job):
-    prompt = job.get("input", {}).get("prompt")
-    if not prompt:
+    inp = job.get("input", {})
+    user_prompt = inp.get("prompt")
+
+    if not user_prompt:
         return {"error": "Missing input.prompt"}
 
-    full_prompt = (
-        "You are AskVox, a friendly, knowledgeable AI assistant. "
-        "Respond clearly and helpfully.\n\n"
-        f"{prompt}\n"
+    # BASE model → plain text prompt
+    prompt = (
+        "You are AskVox, a helpful AI assistant.\n\n"
+        f"User: {user_prompt}\n"
+        "Assistant:"
     )
 
     output = llm(
-        full_prompt,
-        max_tokens=800,
-        temperature=0.45,
+        prompt,
+        max_tokens=1200,
+        temperature=0.6,
         top_p=0.9,
-        repeat_penalty=1.15,
+        stop=["User:", "Assistant:"],
     )
 
     return {
         "response": output["choices"][0]["text"].strip()
     }
 
-runpod.serverless.start({"handler": handler})
+runpod.serverless.start({
+    "handler": handler
+})
