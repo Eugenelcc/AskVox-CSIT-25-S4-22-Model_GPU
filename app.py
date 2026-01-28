@@ -3,31 +3,32 @@ from llama_cpp import Llama
 
 llm = Llama(
     model_path="./model.gguf",
-    n_ctx=4096,
-    n_gpu_layers=20,
-    n_threads=8,
+    n_ctx=2048,
+    n_gpu_layers=30,
     verbose=False,
 )
 
 def handler(job):
-    inp = job.get("input", {})
-    user_prompt = inp.get("prompt")
-    if not user_prompt:
+    if "input" not in job or "prompt" not in job["input"]:
         return {"error": "Missing input.prompt"}
 
+    user_prompt = job["input"]["prompt"]
+
     prompt = (
-        "Instruction: You are AskVox, a helpful assistant.\n"
-        f"Question: {user_prompt}\n"
-        "Answer:"
+        "Instruction: You are AskVox, a safe educational AI tutor.\n"
+        "Explain the following topic clearly and in detail. "
+        "Use paragraphs and examples where helpful.\n\n"
+        f"Topic: {user_prompt}\n\n"
+        "Explanation:"
     )
 
     output = llm(
         prompt,
-        max_tokens=300,
-        temperature=0.3,
+        max_tokens=800,          # allow depth
+        temperature=0.5,         # more expressive
         top_p=0.9,
-        repeat_penalty=1.2,
-        stop=["\n\n"],
+        repeat_penalty=1.15,     # avoid looping
+        stop=["\n\n\n"],         # stop after natural end
     )
 
     return {
