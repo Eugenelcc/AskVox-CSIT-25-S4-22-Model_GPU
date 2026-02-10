@@ -38,9 +38,9 @@ def get_llm(domain: str):
 
     # Tune these for your machine
     common_kwargs = dict(
-        n_ctx=2048,
+        n_ctx=8192,
         n_threads=16,
-        n_gpu_layers=60,  # start safe; increase slowly on A40
+        n_gpu_layers=80,  # start safe; increase slowly on A40
         verbose=False,
     )
 
@@ -59,8 +59,10 @@ def build_prompt(user_prompt: str) -> str:
     prompt = "<|begin_of_text|>"
     prompt += "<|start_header_id|>system<|end_header_id|>\n" + SYSTEM_PROMPT + "<|eot_id|>"
     prompt += "<|start_header_id|>user<|end_header_id|>\n" + user_prompt.strip() + "<|eot_id|>"
-    prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+    prompt += "<|start_header_id>assistant<|end_header_id|>\n"
+    # Ensure no duplicate <|begin_of_text|> is added
     return prompt
+
 
 
 def handler(job):
