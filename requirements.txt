@@ -1,4 +1,3 @@
 runpod
 llama-cpp-python
-peft
-transformers
+ 
