@@ -37,6 +37,14 @@ def handler(job):
     if not isinstance(user_prompt, str):
         return {"error": "input.prompt must be a string"}
 
+    # NEW: allow backend to tune generation per learning preference
+    max_tokens = inp.get("max_tokens", 1024)
+    temperature = inp.get("temperature", 0.7)
+    top_p = inp.get("top_p", 0.95)
+
+    # NEW: allow backend to override stop tokens (optional)
+    stop = inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"])
+
     # Build Llama-3.3 Instruct prompt (same behavior as your slow version)
     prompt = "<|begin_of_text|>"
 
@@ -55,10 +63,10 @@ def handler(job):
     # Generate response
     output = llm(
         prompt,
-        max_tokens=1024,                     # serverless-safe
-        temperature=0.7,                     # same style as before
-        top_p=0.95,
-        stop=["<|eot_id|>", "<|start_header_id|>"],
+        max_tokens=int(max_tokens),
+        temperature=float(temperature),
+        top_p=float(top_p),
+        stop=stop,
     )
 
     return {
