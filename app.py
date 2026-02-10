@@ -1,5 +1,8 @@
 import runpod
 from llama_cpp import Llama
+from transformers import LlamaTokenizer
+from peft import PeftModel
+import torch
 
 # -----------------------
 # Model initialization (cold start)
@@ -25,11 +28,30 @@ SYSTEM_PROMPT = (
 )
 
 # -----------------------
+# Function to dynamically load LoRA adapter based on domain
+# -----------------------
+def load_lora_adapter(domain):
+    # Mapping domains to their LoRA adapter paths
+    adapter_paths = {
+        "cooking": "Skybison/CookingandFoodQLoRAadapter-GGUF",
+        "history": "Skybison/HistoryQLoRAadapter-GUFF",
+        "geography": "Skybison/GeographyQLoRAadapter-GUFF"
+    }
+    adapter_path = adapter_paths.get(domain)
+    if adapter_path:
+        # Load the LoRA adapter if it matches the domain
+        model = PeftModel.from_pretrained(llm, adapter_path)
+        return model
+    # If domain is not found, return the base model
+    return llm
+
+# -----------------------
 # RunPod handler
 # -----------------------
 def handler(job):
     inp = job.get("input", {})
     user_prompt = inp.get("prompt")
+    domain = inp.get("domain", "")  # Get domain for LoRA adapter
 
     if not user_prompt:
         return {"error": "Missing input.prompt"}
@@ -45,7 +67,10 @@ def handler(job):
     # NEW: allow backend to override stop tokens (optional)
     stop = inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"])
 
-    # Build Llama-3.3 Instruct prompt (same behavior as your slow version)
+    # Load the appropriate LoRA adapter based on domain (this is where the function is called)
+    model = load_lora_adapter(domain)
+
+    # Build Llama-3.3 Instruct prompt
     prompt = "<|begin_of_text|>"
 
     prompt += (
@@ -61,7 +86,7 @@ def handler(job):
     prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
 
     # Generate response
-    output = llm(
+    output = model(
         prompt,
         max_tokens=int(max_tokens),
         temperature=float(temperature),
