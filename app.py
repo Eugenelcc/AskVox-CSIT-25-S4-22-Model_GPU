@@ -5,7 +5,7 @@ from peft import PeftModel
 import torch
 
 # -----------------------
-# Model initialization (cold start)
+# Model initialization (cold start) LORA
 # -----------------------
 llm = Llama(
     model_path="./model.gguf",     # Llama-3.3-70B-Instruct Q4 GGUF
