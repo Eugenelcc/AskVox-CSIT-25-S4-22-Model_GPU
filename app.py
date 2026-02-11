@@ -20,7 +20,7 @@ SYSTEM_PROMPT = (
 )
 
 # Tunables (allow override without code edits)
-N_CTX = int(os.getenv("N_CTX", "4096"))  # 8192 for general use, adjust based on model size
+N_CTX = int(os.getenv("N_CTX", "8192"))  # 8192 for general use, adjust based on model size
 N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))  # Auto-set to the available CPU threads
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))  # GPU layer settings; lower if memory issues arise
 
