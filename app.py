@@ -5,9 +5,9 @@ import runpod
 # Paths for the base model and LoRA adapters
 BASE_GGUF = "/app/model.gguf"
 LORA_GGUF = {
-    "Cooking & Food": "/app/Cooking_LoRAadapter.gguf",
-    "History and World Events": "/app/History_LoRAadapter.gguf",
-    "Geography and Travel": "/app/Geography_LoRAadapter.gguf",
+    "cooking & food": "/app/Cooking_LoRAadapter.gguf",
+    "history and world events": "/app/History_LoRAadapter.gguf",
+    "geography and travel": "/app/Geography_LoRAadapter.gguf",
 }
 
 # System prompt to instruct the model
@@ -24,8 +24,15 @@ _MODEL_CACHE = {}
 
 # Function to load or return cached model
 def get_llm(domain: str):
+    # Normalize the domain to lowercase for consistent matching
     domain = (domain or "").lower().strip()
+    print(f"Normalized Domain: {domain}")  # Debug log to check the domain
+
+    # Select the appropriate model based on the domain
     cache_key = domain if domain in LORA_GGUF else "base"
+
+    # Debugging: print which model or adapter is being used
+    print(f"Cache Key: {cache_key}")
 
     # If the model is cached, return it directly
     if cache_key in _MODEL_CACHE:
@@ -45,8 +52,15 @@ def get_llm(domain: str):
         print(f"Loading base model from {BASE_GGUF}")
         llm = Llama(model_path=BASE_GGUF, **common_kwargs)
     else:
-        print(f"Loading LoRA adapter for domain: {domain}")
-        llm = Llama(model_path=BASE_GGUF, lora_path=LORA_GGUF[cache_key], **common_kwargs)
+        # Check if the LoRA adapter path exists
+        lora_adapter_path = LORA_GGUF.get(cache_key)
+        print(f"LoRA Adapter Path: {lora_adapter_path}")  # Debug log for adapter path
+        if lora_adapter_path:
+            print(f"Loading LoRA adapter for domain: {domain}")
+            llm = Llama(model_path=BASE_GGUF, lora_path=lora_adapter_path, **common_kwargs)
+        else:
+            print(f"LoRA adapter not found for domain: {domain}, loading base model")
+            llm = Llama(model_path=BASE_GGUF, **common_kwargs)
 
     # Cache the model to avoid reloading it multiple times
     _MODEL_CACHE[cache_key] = llm
