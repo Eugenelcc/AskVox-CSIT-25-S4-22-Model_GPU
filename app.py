@@ -10,7 +10,7 @@ LORA_GGUF = {
     "geography and travel": "/app/Geography_LoRAadapter.gguf",
 }
 
-# System prompt to instruct the model
+# System prompt to instruct the model (used ONLY when input.prompt is plain text)
 SYSTEM_PROMPT = (
     "You are AskVox, a friendly and helpful AI assistant. "
     "Explain topics in a natural, human, tutor-like way. "
@@ -19,71 +19,97 @@ SYSTEM_PROMPT = (
     "When using bullet points, include a short explanation for each item."
 )
 
+# Tunables (allow override without code edits)
+N_CTX = int(os.getenv("N_CTX", "8192"))
+N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
+
+# Optional: preload models on cold start (reduces first-job latency inside handler)
+PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
+
 # Cache for models to avoid reloading
 _MODEL_CACHE = {}
 
+
+def _make_llama(**kwargs) -> Llama:
+    """
+    llama-cpp-python can auto-add BOS tokens depending on version/settings.
+    If our prompt already includes <|begin_of_text|>, adding BOS again can trigger warnings.
+    We try add_bos=False when supported; fall back gracefully if not.
+    """
+    try:
+        return Llama(add_bos=False, **kwargs)
+    except TypeError:
+        # Older llama_cpp versions may not support add_bos
+        return Llama(**kwargs)
+
+
 # Function to load or return cached model
 def get_llm(domain: str):
-    # Normalize the domain to lowercase for consistent matching
     domain = (domain or "").lower().strip()
-    print(f"Normalized Domain: {domain}")  # Debug log to check the domain
+    print(f"Normalized Domain: {domain}")
 
-    # Select the appropriate model based on the domain
     cache_key = domain if domain in LORA_GGUF else "base"
-
-    # Debugging: print which model or adapter is being used
     print(f"Cache Key: {cache_key}")
 
-    # If the model is cached, return it directly
     if cache_key in _MODEL_CACHE:
         print(f"Returning cached model for {cache_key}.")
         return _MODEL_CACHE[cache_key]
 
-    # Set model parameters for both base and LoRA models
     common_kwargs = {
-        "n_ctx": 8192,          # Context length for the model
-        "n_threads": 16,        # Use available CPU threads
-        "n_gpu_layers": 80,     # Offload layers to GPU
-        "verbose": False,       # Disable verbose logging
+        "model_path": BASE_GGUF,
+        "n_ctx": N_CTX,
+        "n_threads": N_THREADS,
+        "n_gpu_layers": N_GPU_LAYERS,
+        "verbose": False,
     }
 
-    # Load the base model or LoRA adapter as required
     if cache_key == "base":
         print(f"Loading base model from {BASE_GGUF}")
-        llm = Llama(model_path=BASE_GGUF, **common_kwargs)
+        llm = _make_llama(**common_kwargs)
     else:
-        # Check if the LoRA adapter path exists
         lora_adapter_path = LORA_GGUF.get(cache_key)
-        print(f"LoRA Adapter Path: {lora_adapter_path}")  # Debug log for adapter path
+        print(f"LoRA Adapter Path: {lora_adapter_path}")
         if lora_adapter_path:
             print(f"Loading LoRA adapter for domain: {domain}")
-            llm = Llama(model_path=BASE_GGUF, lora_path=lora_adapter_path, **common_kwargs)
+            llm = _make_llama(**common_kwargs, lora_path=lora_adapter_path)
         else:
             print(f"LoRA adapter not found for domain: {domain}, loading base model")
-            llm = Llama(model_path=BASE_GGUF, **common_kwargs)
+            llm = _make_llama(**common_kwargs)
 
-    # Cache the model to avoid reloading it multiple times
     _MODEL_CACHE[cache_key] = llm
     return llm
 
-# Build the complete prompt for the model
+
 def build_prompt(user_prompt: str) -> str:
-    prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n{SYSTEM_PROMPT.strip()}<|eot_id|>"
-    prompt += f"<|start_header_id|>user<|end_header_id|>\n{user_prompt.strip()}<|eot_id|>"
-    prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+    """
+    If user_prompt already looks like a full Llama-3 chat template (starts with <|begin_of_text|>),
+    do NOT wrap it again — this prevents the duplicate <|begin_of_text|> warning and preserves
+    custom system prompts (e.g., your backend second-pass prompt).
+    """
+    raw = (user_prompt or "")
+    s = raw.lstrip()
+    if s.startswith("<|begin_of_text|>"):
+        return s  # already templated upstream
+
+    prompt = (
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
+        f"{SYSTEM_PROMPT.strip()}<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n"
+        f"{raw.strip()}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n"
+    )
     return prompt
 
-# Main handler function for processing requests
+
 def handler(job):
     inp = job.get("input", {})
     user_prompt = inp.get("prompt")
     domain = inp.get("domain", "")
 
-    # Validate input
     if not user_prompt or not isinstance(user_prompt, str):
         return {"error": "Missing input.prompt or input.prompt must be a string"}
 
-    # Set default model parameters (they can be customized via job input)
     max_tokens = int(inp.get("max_tokens", 512))
     temperature = float(inp.get("temperature", 0.7))
     top_p = float(inp.get("top_p", 0.95))
@@ -91,13 +117,9 @@ def handler(job):
 
     print(f"Received prompt for domain: {domain}")
 
-    # Get the appropriate Llama model (either base or LoRA)
     llm = get_llm(domain)
-
-    # Build the model prompt
     prompt = build_prompt(user_prompt)
 
-    # Generate the response from the model
     out = llm(
         prompt,
         max_tokens=max_tokens,
@@ -106,13 +128,20 @@ def handler(job):
         stop=stop,
     )
 
-    # Extract the response
     response = out["choices"][0]["text"].strip()
-
-    # Debugging: print the first 100 characters of the response
     print(f"Generated response: {response[:100]}...")
 
     return {"response": response}
 
-# Start the RunPod serverless handler
+
+# Optional preload (helps reduce first-request latency inside handler)
+if PRELOAD_MODELS:
+    try:
+        get_llm("")  # base
+        for k in list(LORA_GGUF.keys()):
+            get_llm(k)
+        print("✅ Preloaded model(s).")
+    except Exception as e:
+        print(f"⚠️ Preload failed: {e}")
+
 runpod.serverless.start({"handler": handler})
