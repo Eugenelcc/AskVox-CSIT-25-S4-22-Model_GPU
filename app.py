@@ -20,9 +20,9 @@ SYSTEM_PROMPT = (
 )
 
 # Tunables (allow override without code edits)
-N_CTX = int(os.getenv("N_CTX", "8192"))  # 8192 for general use, adjust based on model size
+N_CTX = int(os.getenv("N_CTX", "4096"))  # 8192 for general use, adjust based on model size
 N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))  # Auto-set to the available CPU threads
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))  # GPU layer settings; lower if memory issues arise
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "50"))  # GPU layer settings; lower if memory issues arise
 
 # Optional: preload models on cold start (reduces first-job latency inside handler)
 PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
@@ -91,16 +91,18 @@ def build_prompt(user_prompt: str) -> str:
     do NOT wrap it again — this prevents the duplicate <|begin_of_text|> warning and preserves
     custom system prompts (e.g., your backend second-pass prompt).
     """
-    raw = (user_prompt or "")
-    s = raw.lstrip()
-    if s.startswith("<|begin_of_text|>"):
-        return s  # already templated upstream
+    raw = (user_prompt or "").strip()
 
+    # Check if the prompt already contains the <|begin_of_text|> token
+    if raw.startswith("<|begin_of_text|>"):
+        return raw  # Return the raw prompt if it already includes the token
+
+    # Build the prompt if it doesn't have the <|begin_of_text|> token
     prompt = (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
         f"{SYSTEM_PROMPT.strip()}<|eot_id|>"
         "<|start_header_id|>user<|end_header_id|>\n"
-        f"{raw.strip()}<|eot_id|>"
+        f"{raw}<|eot_id|>"
         "<|start_header_id|>assistant<|end_header_id|>\n"
     )
     return prompt
