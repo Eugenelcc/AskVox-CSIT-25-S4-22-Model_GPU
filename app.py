@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (
 # Tunables (allow override without code edits)
 N_CTX = int(os.getenv("N_CTX", "4096"))  # 8192 for general use, adjust based on model size
 N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))  # Auto-set to the available CPU threads
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "50"))  # GPU layer settings; lower if memory issues arise
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))  # GPU layer settings; lower if memory issues arise
 
 # Optional: preload models on cold start (reduces first-job latency inside handler)
 PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
@@ -32,15 +32,11 @@ _MODEL_CACHE = {}
 
 
 def _make_llama(**kwargs) -> Llama:
-    """
-    llama-cpp-python can auto-add BOS tokens depending on version/settings.
-    If our prompt already includes <|begin_of_text|>, adding BOS again can trigger warnings.
-    We try add_bos=False when supported; fall back gracefully if not.
-    """
     try:
+        kwargs["device"] = "cuda"  # Ensures model is loaded to GPU (if available)
         return Llama(add_bos=False, **kwargs)
     except TypeError:
-        # Older llama_cpp versions may not support add_bos
+        # If the version doesn't support "device", use the older method
         return Llama(**kwargs)
 
 
