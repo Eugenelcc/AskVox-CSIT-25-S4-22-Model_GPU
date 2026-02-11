@@ -15,9 +15,9 @@ RUN apt-get update && apt-get install -y \
 RUN wget -O /app/model.gguf "https://huggingface.co/cakebut/QLlama-3.3-70b/resolve/main/llama-3.3-70b-instruct.Q4_K_M.gguf"
 
 # Download LoRA adapters (Cooking, History, Geography)
-RUN wget -O /app/Cooking_LoRAadapter.gguf "https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF"
-RUN wget -O /app/History_LoRAadapter.gguf "https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF"
-RUN wget -O /app/Geography_LoRAadapter.gguf "https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF"
+RUN wget -O /app/Cooking_LoRAadapter.gguf "https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf"
+RUN wget -O /app/History_LoRAadapter.gguf "https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf"
+RUN wget -O /app/Geography_LoRAadapter.gguf "https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf"
 
 # Install Python dependencies
 RUN pip3 install --upgrade pip \
