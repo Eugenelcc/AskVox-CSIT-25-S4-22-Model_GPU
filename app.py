@@ -20,9 +20,9 @@ SYSTEM_PROMPT = (
 )
 
 # Tunables (allow override without code edits)
-N_CTX = int(os.getenv("N_CTX", "8192"))
-N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
+N_CTX = int(os.getenv("N_CTX", "8192"))  # 8192 for general use, adjust based on model size
+N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))  # Auto-set to the available CPU threads
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))  # GPU layer settings; lower if memory issues arise
 
 # Optional: preload models on cold start (reduces first-job latency inside handler)
 PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
@@ -47,11 +47,12 @@ def _make_llama(**kwargs) -> Llama:
 # Function to load or return cached model
 def get_llm(domain: str):
     domain = (domain or "").lower().strip()
-    print(f"Normalized Domain: {domain}")
+    print(f"Normalized Domain: {domain}")  # Debug log to check the domain
 
     cache_key = domain if domain in LORA_GGUF else "base"
     print(f"Cache Key: {cache_key}")
 
+    # Check if model is cached, return it if it is
     if cache_key in _MODEL_CACHE:
         print(f"Returning cached model for {cache_key}.")
         return _MODEL_CACHE[cache_key]
@@ -64,12 +65,14 @@ def get_llm(domain: str):
         "verbose": False,
     }
 
+    # Loading the base model or LoRA adapter as required
     if cache_key == "base":
         print(f"Loading base model from {BASE_GGUF}")
         llm = _make_llama(**common_kwargs)
     else:
+        # Get the LoRA adapter path for the specific domain
         lora_adapter_path = LORA_GGUF.get(cache_key)
-        print(f"LoRA Adapter Path: {lora_adapter_path}")
+        print(f"LoRA Adapter Path: {lora_adapter_path}")  # Debug log for adapter path
         if lora_adapter_path:
             print(f"Loading LoRA adapter for domain: {domain}")
             llm = _make_llama(**common_kwargs, lora_path=lora_adapter_path)
@@ -77,6 +80,7 @@ def get_llm(domain: str):
             print(f"LoRA adapter not found for domain: {domain}, loading base model")
             llm = _make_llama(**common_kwargs)
 
+    # Cache the model for future use
     _MODEL_CACHE[cache_key] = llm
     return llm
 
@@ -117,7 +121,9 @@ def handler(job):
 
     print(f"Received prompt for domain: {domain}")
 
+    # Get the appropriate Llama model (either base or LoRA)
     llm = get_llm(domain)
+
     prompt = build_prompt(user_prompt)
 
     out = llm(
