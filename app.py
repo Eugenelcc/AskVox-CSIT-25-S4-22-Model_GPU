@@ -1,16 +1,20 @@
 import os
+import gc
+import threading
 from llama_cpp import Llama
 import runpod
 
-# Paths for the base model and LoRA adapters
-BASE_GGUF = "/app/model.gguf"
+# -----------------------
+# Paths (prefer env override in RunPod)
+# -----------------------
+BASE_GGUF = os.getenv("BASE_GGUF", "/app/model.gguf")
+
 LORA_GGUF = {
-    "cooking & food": "/app/Cooking_LoRAadapter.gguf",
-    "history and world events": "/app/History_LoRAadapter.gguf",
-    "geography and travel": "/app/Geography_LoRAadapter.gguf",
+    "cooking & food": os.getenv("COOKING_LORA", "/app/Cooking_LoRAadapter.gguf"),
+    "history and world events": os.getenv("HISTORY_LORA", "/app/History_LoRAadapter.gguf"),
+    "geography and travel": os.getenv("GEO_LORA", "/app/Geography_LoRAadapter.gguf"),
 }
 
-# System prompt to instruct the model (used ONLY when input.prompt is plain text)
 SYSTEM_PROMPT = (
     "You are AskVox, a friendly and helpful AI assistant. "
     "Explain topics in a natural, human, tutor-like way. "
@@ -19,89 +23,133 @@ SYSTEM_PROMPT = (
     "When using bullet points, include a short explanation for each item."
 )
 
-# Tunables (allow override without code edits)
-N_CTX = int(os.getenv("N_CTX", "4096"))  # 8192 for general use, adjust based on model size
-N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))  # Auto-set to the available CPU threads
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))  # GPU layer settings; lower if memory issues arise
+# Tunables
+N_CTX = int(os.getenv("N_CTX", "4096"))
+N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))
 
-# Optional: preload models on cold start (reduces first-job latency inside handler)
+# Optional preload
 PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
 
-# Cache for models to avoid reloading
-_MODEL_CACHE = {}
+# -----------------------
+# Global single-model state
+# -----------------------
+_LOCK = threading.RLock()
+_CURRENT_KEY = None          # "base" or one of LORA_GGUF keys
+_CURRENT_LLM = None          # the only live Llama() instance
 
 
-def _make_llama(**kwargs) -> Llama:
-    try:
-        kwargs["device"] = "cuda"  # Ensures model is loaded to GPU (if available)
-        return Llama(add_bos=False, **kwargs)
-    except TypeError:
-        # If the version doesn't support "device", use the older method
-        return Llama(**kwargs)
+def normalize_domain(domain: str) -> str:
+    """Normalize incoming domain strings to match keys in LORA_GGUF."""
+    d = (domain or "").strip().lower()
 
+    # common variants your frontend might send
+    d = d.replace("_", " ").replace("-", " ")
+    d = " ".join(d.split())
 
-# Function to load or return cached model
-def get_llm(domain: str):
-    domain = (domain or "").lower().strip()
-    print(f"Normalized Domain: {domain}")  # Debug log to check the domain
-
-    cache_key = domain if domain in LORA_GGUF else "base"
-    print(f"Cache Key: {cache_key}")
-
-    # Check if model is cached, return it if it is
-    if cache_key in _MODEL_CACHE:
-        print(f"Returning cached model for {cache_key}.")
-        return _MODEL_CACHE[cache_key]
-
-    common_kwargs = {
-        "model_path": BASE_GGUF,
-        "n_ctx": N_CTX,
-        "n_threads": N_THREADS,
-        "n_gpu_layers": N_GPU_LAYERS,
-        "verbose": False,
+    # map a few friendly aliases if needed
+    aliases = {
+        "cooking": "cooking & food",
+        "cooking and food": "cooking & food",
+        "food": "cooking & food",
+        "history": "history and world events",
+        "world events": "history and world events",
+        "geography": "geography and travel",
+        "travel": "geography and travel",
     }
+    return aliases.get(d, d)
 
-    # Loading the base model or LoRA adapter as required
-    if cache_key == "base":
-        print(f"Loading base model from {BASE_GGUF}")
-        llm = _make_llama(**common_kwargs)
-    else:
-        # Get the LoRA adapter path for the specific domain
-        lora_adapter_path = LORA_GGUF.get(cache_key)
-        print(f"LoRA Adapter Path: {lora_adapter_path}")  # Debug log for adapter path
-        if lora_adapter_path:
-            print(f"Loading LoRA adapter for domain: {domain}")
-            llm = _make_llama(**common_kwargs, lora_path=lora_adapter_path)
-        else:
-            print(f"LoRA adapter not found for domain: {domain}, loading base model")
-            llm = _make_llama(**common_kwargs)
 
-    # Cache the model for future use
-    _MODEL_CACHE[cache_key] = llm
-    return llm
+def safe_close_llm(llm: Llama):
+    """
+    Be defensive: llama-cpp-python sometimes throws during cleanup if init failed.
+    We never want cleanup errors to kill the worker.
+    """
+    if llm is None:
+        return
+    try:
+        # Some versions have .close(); some do cleanup on del
+        if hasattr(llm, "close"):
+            llm.close()
+    except Exception as e:
+        print(f"[WARN] Ignored error during llm.close(): {e}")
+
+    try:
+        del llm
+    except Exception:
+        pass
+
+    gc.collect()
 
 
 def build_prompt(user_prompt: str) -> str:
-    """
-    If user_prompt already looks like a full Llama-3 chat template (starts with <|begin_of_text|>),
-    do NOT wrap it again — this prevents the duplicate <|begin_of_text|> warning and preserves
-    custom system prompts (e.g., your backend second-pass prompt).
-    """
     raw = (user_prompt or "").strip()
-
-    # Check if the prompt already contains the <|begin_of_text|> token
     if raw.startswith("<|begin_of_text|>"):
-        return raw  # Return the raw prompt if it already includes the token
+        return raw
 
-    # Build the prompt if it doesn't have the <|begin_of_text|> token
-    prompt = (
+    return (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
         f"{SYSTEM_PROMPT.strip()}<|eot_id|>"
         "<|start_header_id|>user<|end_header_id|>\n"
         f"{raw}<|eot_id|>"
         "<|start_header_id|>assistant<|end_header_id|>\n"
     )
-    return prompt
+
+
+def load_llm_for_key(key: str) -> Llama:
+    """
+    Load base or base+one LoRA.
+    IMPORTANT: we only ever have one Llama instance alive.
+    """
+    common_kwargs = dict(
+        model_path=BASE_GGUF,
+        n_ctx=N_CTX,
+        n_threads=N_THREADS,
+        n_gpu_layers=N_GPU_LAYERS,
+        verbose=False,
+        add_bos=False,
+    )
+
+    if key == "base":
+        print(f"[LOAD] Base model: {BASE_GGUF}")
+        return Llama(**common_kwargs)
+
+    lora_path = LORA_GGUF.get(key)
+    if not lora_path:
+        print(f"[LOAD] Unknown key '{key}', falling back to base.")
+        return Llama(**common_kwargs)
+
+    print(f"[LOAD] Base+LoRA key='{key}' lora='{lora_path}'")
+    return Llama(**common_kwargs, lora_path=lora_path)
+
+
+def get_llm(domain: str) -> Llama:
+    """
+    Single-instance switcher:
+    - If requested domain differs, unload current model and load the requested one.
+    - Guarded by a lock to prevent concurrent loads/switches.
+    """
+    global _CURRENT_KEY, _CURRENT_LLM
+
+    norm = normalize_domain(domain)
+    key = norm if norm in LORA_GGUF else "base"
+
+    with _LOCK:
+        if _CURRENT_LLM is not None and _CURRENT_KEY == key:
+            print(f"[CACHE] Using already-loaded key='{key}'")
+            return _CURRENT_LLM
+
+        # Switch model
+        if _CURRENT_LLM is not None:
+            print(f"[SWITCH] Unloading key='{_CURRENT_KEY}' -> loading key='{key}'")
+            safe_close_llm(_CURRENT_LLM)
+            _CURRENT_LLM = None
+            _CURRENT_KEY = None
+
+        _CURRENT_LLM = load_llm_for_key(key)
+        _CURRENT_KEY = key
+        print(f"[READY] Loaded key='{key}'")
+        return _CURRENT_LLM
 
 
 def handler(job):
@@ -117,11 +165,9 @@ def handler(job):
     top_p = float(inp.get("top_p", 0.95))
     stop = inp.get("stop", ["<|eot_id|>"])
 
-    print(f"Received prompt for domain: {domain}")
+    print(f"[REQ] domain='{domain}' normalized='{normalize_domain(domain)}'")
 
-    # Get the appropriate Llama model (either base or LoRA)
     llm = get_llm(domain)
-
     prompt = build_prompt(user_prompt)
 
     out = llm(
@@ -133,18 +179,18 @@ def handler(job):
     )
 
     response = out["choices"][0]["text"].strip()
-    print(f"Generated response: {response[:100]}...")
-
+    print(f"[OK] {response[:120]}...")
     return {"response": response}
 
 
-# Optional preload (helps reduce first-request latency inside handler)
+# Optional preload: just load base once so first request is faster.
 if PRELOAD_MODELS:
     try:
-        get_llm("")  # base
-        for k in list(LORA_GGUF.keys()):
-            get_llm(k)
-        print("✅ Preloaded model(s).")
+        with _LOCK:
+            if _CURRENT_LLM is None:
+                _CURRENT_LLM = load_llm_for_key("base")
+                _CURRENT_KEY = "base"
+        print("✅ Preloaded base model.")
     except Exception as e:
         print(f"⚠️ Preload failed: {e}")
 
