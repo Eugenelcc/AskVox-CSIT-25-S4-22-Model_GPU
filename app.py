@@ -9,7 +9,6 @@ from llama_cpp import Llama
 # -----------------------
 BASE_GGUF = os.getenv("BASE_GGUF", "./model.gguf")
 
-
 LORA_GGUF = {
     "cooking & food": os.getenv("COOKING_LORA", "./Cooking_LoRAadapter.gguf"),
     "history and world events": os.getenv("HISTORY_LORA", "./History_LoRAadapter.gguf"),
@@ -17,22 +16,22 @@ LORA_GGUF = {
 }
 
 # -----------------------
-# Model settings (match old working behavior)
+# Model settings (same as your good version)
 # -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
-N_THREADS = int(os.getenv("N_THREADS", "16"))      # fixed (important)
+N_THREADS = int(os.getenv("N_THREADS", "16"))
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
 
 # -----------------------
-# System prompt (unchanged)
+# System prompt
 # -----------------------
 SYSTEM_PROMPT = (
     "You are AskVox, a friendly and helpful AI assistant. "
     "Explain topics in a natural, human, tutor-like way. "
     "Prefer clear paragraph-style explanations with context, reasoning, and examples. "
     "Use bullet points or numbered lists only when they genuinely improve clarity "
-    "(such as rankings, comparisons, or step-by-step instructions). "
-    "When using bullet points, include a short explanation for each item rather than listing names only."
+    "(such as comparisons, rankings, or step-by-step instructions). "
+    "When using bullet points, include a short explanation for each item."
 )
 
 # -----------------------
@@ -44,7 +43,7 @@ _CURRENT_LLM = None
 
 
 # -----------------------
-# Helpers
+# Domain normalization
 # -----------------------
 def normalize_domain(domain: str) -> str:
     d = (domain or "").strip().lower()
@@ -59,9 +58,13 @@ def normalize_domain(domain: str) -> str:
         "geography": "geography and travel",
         "travel": "geography and travel",
     }
+
     return aliases.get(d, d)
 
 
+# -----------------------
+# Cleanup helper
+# -----------------------
 def safe_close(llm):
     if llm is None:
         return
@@ -77,6 +80,9 @@ def safe_close(llm):
     gc.collect()
 
 
+# -----------------------
+# Prompt builder (Llama-3 format)
+# -----------------------
 def build_prompt(user_prompt: str) -> str:
     raw = user_prompt.strip()
 
@@ -109,7 +115,9 @@ def load_model(key: str) -> Llama:
         n_threads=N_THREADS,
         n_gpu_layers=N_GPU_LAYERS,
         verbose=False,
-        add_bos=False,   # CRITICAL for Llama-3 quality
+        # IMPORTANT:
+        # Do NOT set add_bos=False
+        # Default behavior gives best Llama-3 quality
     )
 
     # Base model
@@ -125,9 +133,12 @@ def load_model(key: str) -> Llama:
         return Llama(**common)
 
     print(f"[LOAD] Base + LoRA ({key}) -> {lora_path}")
-    return Llama(**common, lora_path=lora_path)
+    return Llama(**common, lora_path=lora_path, lora_scale=1.0)
 
 
+# -----------------------
+# Model switcher
+# -----------------------
 def get_model(domain: str) -> Llama:
     global _CURRENT_KEY, _CURRENT_LLM
 
@@ -135,11 +146,9 @@ def get_model(domain: str) -> Llama:
     key = norm if norm in LORA_GGUF else "base"
 
     with _LOCK:
-        # Use cached model
         if _CURRENT_LLM is not None and _CURRENT_KEY == key:
             return _CURRENT_LLM
 
-        # Switch model if needed
         if _CURRENT_LLM is not None:
             print(f"[SWITCH] {_CURRENT_KEY} -> {key}")
             safe_close(_CURRENT_LLM)
@@ -151,7 +160,7 @@ def get_model(domain: str) -> Llama:
 
 
 # -----------------------
-# Cold start: preload base
+# Cold start (preload base)
 # -----------------------
 print("Loading base model at startup...")
 _CURRENT_LLM = load_model("base")
@@ -178,7 +187,6 @@ def handler(job):
         max_tokens=int(inp.get("max_tokens", 1024)),
         temperature=float(inp.get("temperature", 0.7)),
         top_p=float(inp.get("top_p", 0.95)),
-        repeat_penalty=1.05,
         stop=inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"]),
     )
 
@@ -191,6 +199,6 @@ def handler(job):
 
 
 # -----------------------
-# Start serverless
+# Start RunPod serverless
 # -----------------------
 runpod.serverless.start({"handler": handler})
