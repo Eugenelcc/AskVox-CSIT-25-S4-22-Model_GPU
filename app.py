@@ -9,7 +9,6 @@ from llama_cpp import Llama
 # -----------------------
 BASE_GGUF = os.getenv("BASE_GGUF", "./model.gguf")
 
-# LoRA placeholders (optional)
 LORA_GGUF = {
     "cooking & food": os.getenv("COOKING_LORA", "./Cooking_LoRAadapter.gguf"),
     "history and world events": os.getenv("HISTORY_LORA", "./History_LoRAadapter.gguf"),
@@ -17,10 +16,10 @@ LORA_GGUF = {
 }
 
 # -----------------------
-# Model settings (same behavior you liked)
+# Model settings (match old working behavior)
 # -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
-N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))
+N_THREADS = int(os.getenv("N_THREADS", "16"))      # fixed (important)
 N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
 
 # -----------------------
@@ -70,12 +69,10 @@ def safe_close(llm):
             llm.close()
     except Exception as e:
         print(f"[WARN] close error: {e}")
-
     try:
         del llm
     except:
         pass
-
     gc.collect()
 
 
@@ -111,20 +108,22 @@ def load_model(key: str) -> Llama:
         n_threads=N_THREADS,
         n_gpu_layers=N_GPU_LAYERS,
         verbose=False,
+        add_bos=False,   # CRITICAL for Llama-3 quality
     )
 
+    # Base model
     if key == "base":
         print("[LOAD] Base model")
         return Llama(**common)
 
+    # LoRA
     lora_path = LORA_GGUF.get(key)
 
-    # Placeholder behavior: if LoRA file missing, just load base
     if not lora_path or not os.path.exists(lora_path):
         print(f"[LOAD] LoRA for '{key}' not found, using base")
         return Llama(**common)
 
-    print(f"[LOAD] Base + LoRA ({key})")
+    print(f"[LOAD] Base + LoRA ({key}) -> {lora_path}")
     return Llama(**common, lora_path=lora_path)
 
 
@@ -135,20 +134,23 @@ def get_model(domain: str) -> Llama:
     key = norm if norm in LORA_GGUF else "base"
 
     with _LOCK:
+        # Use cached model
         if _CURRENT_LLM is not None and _CURRENT_KEY == key:
             return _CURRENT_LLM
 
+        # Switch model if needed
         if _CURRENT_LLM is not None:
             print(f"[SWITCH] {_CURRENT_KEY} -> {key}")
             safe_close(_CURRENT_LLM)
 
         _CURRENT_LLM = load_model(key)
         _CURRENT_KEY = key
+        print(f"[READY] Model loaded: {key}")
         return _CURRENT_LLM
 
 
 # -----------------------
-# Cold start: load base
+# Cold start: preload base
 # -----------------------
 print("Loading base model at startup...")
 _CURRENT_LLM = load_model("base")
@@ -168,7 +170,6 @@ def handler(job):
         return {"error": "Missing input.prompt"}
 
     llm = get_model(domain)
-
     prompt = build_prompt(user_prompt)
 
     output = llm(
@@ -176,6 +177,7 @@ def handler(job):
         max_tokens=int(inp.get("max_tokens", 1024)),
         temperature=float(inp.get("temperature", 0.7)),
         top_p=float(inp.get("top_p", 0.95)),
+        repeat_penalty=1.05,
         stop=inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"]),
     )
 
