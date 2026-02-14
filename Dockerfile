@@ -22,7 +22,7 @@ RUN wget -O model.gguf \
 
 # Cooking
 RUN wget -O Cooking_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf"|| echo "Cooking LoRA not found, skipping"
+"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf" || echo "Cooking LoRA not found, skipping"
 
 # History
 RUN wget -O History_LoRAadapter.gguf \
