@@ -1,8 +1,8 @@
 import os
 import gc
 import threading
-from llama_cpp import Llama
 import runpod
+from llama_cpp import Llama
 
 # -----------------------
 # Paths (prefer env override in RunPod)
@@ -16,7 +16,7 @@ LORA_GGUF = {
 }
 
 # -----------------------
-# System prompt (same idea as App.py #2)
+# System prompt (same style as your "good/slow" version)
 # -----------------------
 SYSTEM_PROMPT = (
     "You are AskVox, a friendly and helpful AI assistant. "
@@ -27,20 +27,20 @@ SYSTEM_PROMPT = (
     "When using bullet points, include a short explanation for each item rather than listing names only."
 )
 
-# Tunables
+# -----------------------
+# Tunables (env overridable)
+# -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
 N_THREADS = int(os.getenv("N_THREADS", str(os.cpu_count() or 16)))
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))
-
-# Optional preload
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))  # -1 = auto/offload as much as possible
 PRELOAD_MODELS = os.getenv("PRELOAD_MODELS", "0") == "1"
 
 # -----------------------
-# Global single-model state
+# Global single-model state (one live Llama() instance)
 # -----------------------
 _LOCK = threading.RLock()
-_CURRENT_KEY = None          # "base" or one of LORA_GGUF keys
-_CURRENT_LLM = None          # the only live Llama() instance
+_CURRENT_KEY = None   # "base" or one of LORA_GGUF keys
+_CURRENT_LLM = None   # the only live Llama() instance
 
 
 def normalize_domain(domain: str) -> str:
@@ -50,6 +50,7 @@ def normalize_domain(domain: str) -> str:
     d = " ".join(d.split())
 
     aliases = {
+        "base": "base",
         "cooking": "cooking & food",
         "cooking and food": "cooking & food",
         "food": "cooking & food",
@@ -62,10 +63,7 @@ def normalize_domain(domain: str) -> str:
 
 
 def safe_close_llm(llm: Llama):
-    """
-    Be defensive: llama-cpp-python sometimes throws during cleanup if init failed.
-    We never want cleanup errors to kill the worker.
-    """
+    """Defensive cleanup (never let cleanup errors kill the worker)."""
     if llm is None:
         return
     try:
@@ -82,47 +80,36 @@ def safe_close_llm(llm: Llama):
     gc.collect()
 
 
-# -----------------------
-# Prompt builder (ported from App.py #2)
-# -----------------------
-def build_prompt(user_prompt: str) -> str:
+def build_instruct_prompt(user_prompt: str) -> str:
     """
-    Build Llama-3.x instruct prompt.
-    If caller already passes a fully-formatted prompt starting with <|begin_of_text|>,
-    we keep it unchanged.
+    Match your 'good/slow' prompt builder:
+    <|begin_of_text|> + system + user + assistant
     """
     raw = (user_prompt or "").strip()
+
+    # If caller already sent a fully-formed instruct prompt, pass through
     if raw.startswith("<|begin_of_text|>"):
         return raw
 
-    prompt = "<|begin_of_text|>"
-
-    prompt += (
+    return (
+        "<|begin_of_text|>"
         "<|start_header_id|>system<|end_header_id|>\n"
         f"{SYSTEM_PROMPT}<|eot_id|>"
-    )
-
-    prompt += (
         "<|start_header_id|>user<|end_header_id|>\n"
         f"{raw}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n"
     )
-
-    prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
-    return prompt
 
 
 def load_llm_for_key(key: str) -> Llama:
-    """
-    Load base or base+one LoRA.
-    IMPORTANT: we only ever have one Llama instance alive.
-    """
+    """Load base or base+one LoRA. Only one instance should exist at a time."""
     common_kwargs = dict(
         model_path=BASE_GGUF,
         n_ctx=N_CTX,
         n_threads=N_THREADS,
         n_gpu_layers=N_GPU_LAYERS,
         verbose=False,
-        add_bos=False,   # keep consistent with your prompt formatting
+        add_bos=False,  # important for Llama-3.x GGUF instruct formatting
     )
 
     if key == "base":
@@ -141,8 +128,8 @@ def load_llm_for_key(key: str) -> Llama:
 def get_llm(domain: str) -> Llama:
     """
     Single-instance switcher:
-    - If requested domain differs, unload current model and load the requested one.
-    - Guarded by a lock to prevent concurrent loads/switches.
+    - If requested domain differs, unload current model and load requested one.
+    - Guarded by _LOCK.
     """
     global _CURRENT_KEY, _CURRENT_LLM
 
@@ -171,29 +158,36 @@ def handler(job):
     user_prompt = inp.get("prompt")
     domain = inp.get("domain", "")
 
-    if not user_prompt or not isinstance(user_prompt, str):
-        return {"error": "Missing input.prompt or input.prompt must be a string"}
+    if not user_prompt:
+        return {"error": "Missing input.prompt"}
+    if not isinstance(user_prompt, str):
+        return {"error": "input.prompt must be a string"}
 
-    # Generation params (keep your #1 defaults, but allow overrides)
-    max_tokens = int(inp.get("max_tokens", 1024))  # match #2 longer default
+    # Defaults that match your "good/slow" version more closely
+    max_tokens = int(inp.get("max_tokens", 1024))
     temperature = float(inp.get("temperature", 0.7))
     top_p = float(inp.get("top_p", 0.95))
 
-    # Match #2 stop behavior by default (prevents header leakage)
+    # IMPORTANT: stop list matches your "good/slow" version
     stop = inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"])
+    if isinstance(stop, str):
+        stop = [stop]
 
-    print(f"[REQ] domain='{domain}' normalized='{normalize_domain(domain)}'")
+    print(f"[REQ] domain='{domain}' normalized='{normalize_domain(domain)}' max_tokens={max_tokens}")
 
-    llm = get_llm(domain)
-    prompt = build_prompt(user_prompt)
+    # Build prompt the same way as your "good/slow" handler
+    prompt = build_instruct_prompt(user_prompt)
 
-    out = llm(
-        prompt,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        stop=stop,
-    )
+    # llama_cpp is not thread-safe: serialize inference + switching with the same lock
+    with _LOCK:
+        llm = get_llm(domain)
+        out = llm(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            stop=stop,
+        )
 
     response = out["choices"][0]["text"].strip()
     print(f"[OK] {response[:120]}...")
