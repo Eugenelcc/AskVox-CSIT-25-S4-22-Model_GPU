@@ -9,6 +9,7 @@ from llama_cpp import Llama
 # -----------------------
 BASE_GGUF = os.getenv("BASE_GGUF", "./model.gguf")
 
+
 LORA_GGUF = {
     "cooking & food": os.getenv("COOKING_LORA", "./Cooking_LoRAadapter.gguf"),
     "history and world events": os.getenv("HISTORY_LORA", "./History_LoRAadapter.gguf"),
