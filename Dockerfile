@@ -21,15 +21,15 @@ RUN wget -O model.gguf \
 
 # Cooking
 RUN wget -O Cooking_LoRAadapter.gguf \
-"https://huggingface.co/YOUR_USERNAME/CookingQLoRAadapter-GGUF/resolve/main/CookingQLoRAadapter.gguf" || echo "Cooking LoRA not found, skipping"
+"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf"|| echo "Cooking LoRA not found, skipping"
 
 # History
 RUN wget -O History_LoRAadapter.gguf \
-"https://huggingface.co/YOUR_USERNAME/HistoryQLoRAadapter-GGUF/resolve/main/HistoryQLoRAadapter.gguf" || echo "History LoRA not found, skipping"
+"https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf" || echo "History LoRA not found, skipping"
 
 # Geography
 RUN wget -O Geography_LoRAadapter.gguf \
-"https://huggingface.co/YOUR_USERNAME/GeographyQLoRAadapter-GGUF/resolve/main/GeographyQLoRAadapter.gguf" || echo "Geography LoRA not found, skipping"
+"https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" || echo "Geography LoRA not found, skipping"
 
 # -----------------------
 # Install dependencies
