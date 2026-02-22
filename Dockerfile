@@ -27,10 +27,10 @@ RUN pip3 install --upgrade pip
 # -----------------------
 # Force CUDA build of llama-cpp
 # -----------------------
-ENV CMAKE_ARGS="-DGGML_CUDA=on"
-ENV FORCE_CMAKE=1
+ENV CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86"
 
 RUN pip3 install --no-cache-dir runpod llama-cpp-python
+
 
 
 
