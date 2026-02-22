@@ -4,6 +4,7 @@ import threading
 import runpod
 from llama_cpp import Llama
 
+
 # -----------------------
 # Paths
 # -----------------------
@@ -16,11 +17,11 @@ LORA_GGUF = {
 }
 
 # -----------------------
-# Model settings
+# Model settings (same as your good version)
 # -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
 N_THREADS = int(os.getenv("N_THREADS", "16"))
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "999"))  # H200 can do full offload
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))
 
 # -----------------------
 # System prompt
@@ -41,6 +42,7 @@ _LOCK = threading.RLock()
 _CURRENT_KEY = None
 _CURRENT_LLM = None
 
+
 # -----------------------
 # Domain normalization
 # -----------------------
@@ -57,8 +59,13 @@ def normalize_domain(domain: str) -> str:
         "geography": "geography and travel",
         "travel": "geography and travel",
     }
+
     return aliases.get(d, d)
 
+
+# -----------------------
+# Cleanup helper
+# -----------------------
 def safe_close(llm):
     if llm is None:
         return
@@ -69,12 +76,38 @@ def safe_close(llm):
         print(f"[WARN] close error: {e}")
     try:
         del llm
-    except Exception:
+    except:
         pass
     gc.collect()
 
+
 # -----------------------
-# Loader with GPU->CPU fallback
+# Prompt builder (Llama-3 format)
+# -----------------------
+def build_prompt(user_prompt: str) -> str:
+    raw = user_prompt.strip()
+
+    if raw.startswith("<|begin_of_text|>"):
+        return raw
+
+    prompt = "<|begin_of_text|>"
+
+    prompt += (
+        "<|start_header_id|>system<|end_header_id|>\n"
+        f"{SYSTEM_PROMPT}<|eot_id|>"
+    )
+
+    prompt += (
+        "<|start_header_id|>user<|end_header_id|>\n"
+        f"{raw}<|eot_id|>"
+    )
+
+    prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+    return prompt
+
+
+# -----------------------
+# Model loader
 # -----------------------
 def load_model(key: str) -> Llama:
     common = dict(
@@ -82,41 +115,34 @@ def load_model(key: str) -> Llama:
         n_ctx=N_CTX,
         n_threads=N_THREADS,
         n_gpu_layers=N_GPU_LAYERS,
-        verbose=True,
-        chat_format="llama-3",
+        verbose=False,
+        # IMPORTANT:
+        # Do NOT set add_bos=False
+        # Default behavior gives best Llama-3 quality
     )
 
-    lora_path = None
-    if key != "base":
-        lp = LORA_GGUF.get(key)
-        if lp and os.path.exists(lp):
-            lora_path = lp
-
-    try:
-        if key == "base":
-            print(f"[LOAD] Base (GPU try) n_ctx={N_CTX} n_gpu_layers={N_GPU_LAYERS}")
-            return Llama(**common)
-
-        if lora_path:
-            print(f"[LOAD] Base+LoRA ({key}) (GPU try) -> {lora_path}")
-            return Llama(**common, lora_path=lora_path, lora_scale=1.0)
-
-        print(f"[LOAD] LoRA '{key}' missing, using base (GPU try)")
+    # Base model
+    if key == "base":
+        print("[LOAD] Base model")
         return Llama(**common)
 
-    except Exception as e:
-        print(f"[GPU FAIL] {e}")
-        print("[FALLBACK] Reload CPU (n_gpu_layers=0)")
-        common["n_gpu_layers"] = 0
+    # LoRA
+    lora_path = LORA_GGUF.get(key)
 
-        if key == "base":
-            return Llama(**common)
-        if lora_path:
-            return Llama(**common, lora_path=lora_path, lora_scale=1.0)
+    if not lora_path or not os.path.exists(lora_path):
+        print(f"[LOAD] LoRA for '{key}' not found, using base")
         return Llama(**common)
 
+    print(f"[LOAD] Base + LoRA ({key}) -> {lora_path}")
+    return Llama(**common, lora_path=lora_path, lora_scale=1.0)
+
+
+# -----------------------
+# Model switcher
+# -----------------------
 def get_model(domain: str) -> Llama:
     global _CURRENT_KEY, _CURRENT_LLM
+
     norm = normalize_domain(domain)
     key = norm if norm in LORA_GGUF else "base"
 
@@ -127,12 +153,21 @@ def get_model(domain: str) -> Llama:
         if _CURRENT_LLM is not None:
             print(f"[SWITCH] {_CURRENT_KEY} -> {key}")
             safe_close(_CURRENT_LLM)
-            _CURRENT_LLM = None
 
         _CURRENT_LLM = load_model(key)
         _CURRENT_KEY = key
         print(f"[READY] Model loaded: {key}")
         return _CURRENT_LLM
+
+
+# -----------------------
+# Cold start (preload base)
+# -----------------------
+print("Loading base model at startup...")
+_CURRENT_LLM = load_model("base")
+_CURRENT_KEY = "base"
+print("Model ready.")
+
 
 # -----------------------
 # RunPod handler
@@ -146,25 +181,25 @@ def handler(job):
         return {"error": "Missing input.prompt"}
 
     llm = get_model(domain)
+    prompt = build_prompt(user_prompt)
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt.strip()},
-    ]
-
-    out = llm.create_chat_completion(
-        messages=messages,
+    output = llm(
+        prompt,
         max_tokens=int(inp.get("max_tokens", 1024)),
         temperature=float(inp.get("temperature", 0.7)),
         top_p=float(inp.get("top_p", 0.95)),
+        stop=inp.get("stop", ["<|eot_id|>", "<|start_header_id|>"]),
     )
 
-    response = out["choices"][0]["message"]["content"].strip()
+    response = output["choices"][0]["text"].strip()
 
-    used = normalize_domain(domain)
-    if used not in LORA_GGUF:
-        used = "base"
+    return {
+        "response": response,
+        "domain_used": normalize_domain(domain) or "base"
+    }
 
-    return {"response": response, "domain_used": used, "n_ctx": N_CTX}
 
+# -----------------------
+# Start RunPod serverless
+# -----------------------
 runpod.serverless.start({"handler": handler})
