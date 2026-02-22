@@ -1,56 +1,50 @@
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# -----------------------
-# System build dependencies
-# -----------------------
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    python3-dev \
-    git \
-    build-essential \
-    cmake \
-    ninja-build \
     wget \
-    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --upgrade pip setuptools wheel
 
 # -----------------------
-# Build llama-cpp-python FROM SOURCE with CUDA for H200 (SM90)
-# -----------------------
-ENV FORCE_CMAKE=1
-ENV CMAKE_ARGS="-DLLAMA_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=90"
-
-# (Optional but helps avoid surprises)
-# You can pin to a version known to work well.
-RUN pip3 install "runpod==1.*" "llama-cpp-python==0.3.7"
-
-# -----------------------
-# Download models (baked into image)
+# Download base model
 # -----------------------
 RUN wget -O model.gguf \
 "https://huggingface.co/cakebut/QLlama-3.3-70b/resolve/main/llama-3.3-70b-instruct.Q4_K_M.gguf"
 
+# -----------------------
+# Download LoRAs from Hugging Face
+# (replace URLs with your actual repos)
+# -----------------------
+
+# Cooking
 RUN wget -O Cooking_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf" \
-|| echo "Cooking LoRA not found, skipping"
+"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf" || echo "Cooking LoRA not found, skipping"
 
+# History
 RUN wget -O History_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf" \
-|| echo "History LoRA not found, skipping"
+"https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf" || echo "History LoRA not found, skipping"
 
+# Geography
 RUN wget -O Geography_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" \
-|| echo "Geography LoRA not found, skipping"
+"https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" || echo "Geography LoRA not found, skipping"
 
 # -----------------------
-# App
+# Install dependencies (GPU build)
 # -----------------------
+
+RUN pip3 install --upgrade pip
+
+# Force llama-cpp-python to compile with CUDA
+ENV CMAKE_ARGS="-DLLAMA_CUBLAS=on"
+ENV FORCE_CMAKE=1
+
+RUN pip3 install runpod llama-cpp-python
+
+
 COPY app.py .
 
-# Print GPU info then run
-CMD ["bash", "-lc", "nvidia-smi -L || true; python3 app.py"]
+CMD ["python3", "app.py"]
