@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 WORKDIR /app
 
@@ -6,41 +6,43 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     wget \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
+# -----------------------
+# Install dependencies first (better caching)
+# -----------------------
+RUN pip3 install --upgrade pip
+
+# Pin llama-cpp-python and force CUDA wheel index
+# (Pick a stable version; you can change the version if needed)
+RUN pip3 install \
+    runpod==1.* \
+    "llama-cpp-python==0.3.7" \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
 # -----------------------
-# Download base model
+# Download models (can be slow, but ok if you want baked image)
 # -----------------------
 RUN wget -O model.gguf \
 "https://huggingface.co/cakebut/QLlama-3.3-70b/resolve/main/llama-3.3-70b-instruct.Q4_K_M.gguf"
 
-# -----------------------
-# Download LoRAs from Hugging Face
-# (replace URLs with your actual repos)
-# -----------------------
-
-# Cooking
 RUN wget -O Cooking_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf" || echo "Cooking LoRA not found, skipping"
+"https://huggingface.co/Skybison/CookingandFoodQLoRAadapter-GGUF/resolve/main/CookingandFoodQLoRAadapter.gguf" \
+|| echo "Cooking LoRA not found, skipping"
 
-# History
 RUN wget -O History_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf" || echo "History LoRA not found, skipping"
+"https://huggingface.co/Skybison/HistoryQLoRAadapter-GUFF/resolve/main/HistoryQLoRAadapter.gguf" \
+|| echo "History LoRA not found, skipping"
 
-# Geography
 RUN wget -O Geography_LoRAadapter.gguf \
-"https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" || echo "Geography LoRA not found, skipping"
+"https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" \
+|| echo "Geography LoRA not found, skipping"
 
 # -----------------------
-# Install dependencies
+# App
 # -----------------------
-RUN pip3 install --upgrade pip
-RUN pip3 install \
-    runpod \
-    llama-cpp-python \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
-
 COPY app.py .
 
-CMD ["python3", "app.py"]
+# (Optional) show GPU at container startup in logs
+CMD ["bash", "-lc", "nvidia-smi || true && python3 app.py"]
