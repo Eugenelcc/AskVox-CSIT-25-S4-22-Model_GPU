@@ -27,12 +27,9 @@ RUN pip3 install --upgrade pip
 # -----------------------
 # Force CUDA build of llama-cpp
 # -----------------------
-ENV CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80"
-ENV FORCE_CMAKE=1
-
-
-RUN pip3 install --no-cache-dir runpod llama-cpp-python
-
+RUN pip3 install runpod \
+    llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
 
 
