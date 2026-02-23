@@ -1,36 +1,12 @@
-FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+FROM FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# -----------------------
-# System dependencies
-# -----------------------
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    build-essential \
-    cmake \
-    git \
     wget \
-    curl \
-    ninja-build \
     && rm -rf /var/lib/apt/lists/*
-
-# Make python3 default python
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
-# -----------------------
-# Upgrade pip
-# -----------------------
-RUN pip3 install --upgrade pip
-
-# -----------------------
-# Force CUDA build of llama-cpp
-# -----------------------
-RUN pip3 install runpod \
-    llama-cpp-python \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
-
 
 
 # -----------------------
@@ -55,6 +31,18 @@ RUN wget -O History_LoRAadapter.gguf \
 # Geography
 RUN wget -O Geography_LoRAadapter.gguf \
 "https://huggingface.co/Skybison/GeographyQLoRAadapter-GUFF/resolve/main/GeographyQLoRAadapter.gguf" || echo "Geography LoRA not found, skipping"
+
+# -----------------------
+# Install dependencies
+# -----------------------
+RUN pip3 install --upgrade pip
+
+RUN pip3 install runpod
+
+RUN pip3 install --force-reinstall --no-cache-dir \
+    llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+
 
 COPY app.py .
 
