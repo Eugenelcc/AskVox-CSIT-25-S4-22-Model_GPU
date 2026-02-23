@@ -21,7 +21,7 @@ LORA_GGUF = {
 # -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
 N_THREADS = int(os.getenv("N_THREADS", "16"))
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "-1"))
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
 
 # -----------------------
 # System prompt
@@ -115,7 +115,7 @@ def load_model(key: str) -> Llama:
         n_ctx=N_CTX,
         n_threads=N_THREADS,
         n_gpu_layers=N_GPU_LAYERS,
-        verbose=False,
+        verbose=True,
         # IMPORTANT:
         # Do NOT set add_bos=False
         # Default behavior gives best Llama-3 quality
