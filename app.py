@@ -21,7 +21,7 @@ LORA_GGUF = {
 # -----------------------
 N_CTX = int(os.getenv("N_CTX", "8192"))
 N_THREADS = int(os.getenv("N_THREADS", "16"))
-N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "80"))
+N_GPU_LAYERS = int(os.getenv("N_GPU_LAYERS", "1"))
 
 # -----------------------
 # System prompt
