@@ -1,4 +1,5 @@
-FROM FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+
 
 WORKDIR /app
 
@@ -37,11 +38,11 @@ RUN wget -O Geography_LoRAadapter.gguf \
 # -----------------------
 RUN pip3 install --upgrade pip
 
-RUN pip3 install runpod
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
+ENV FORCE_CMAKE=1
 
-RUN pip3 install --force-reinstall --no-cache-dir \
-    llama-cpp-python \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+RUN pip3 install runpod llama-cpp-python
+
 
 
 COPY app.py .
